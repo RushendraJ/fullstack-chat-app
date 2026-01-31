@@ -23,8 +23,9 @@ app.use("/api/auth",authRoutes);
 app.use("/api/messages",messageRoutes);
 
 if (process.env.NODE_ENV === "production") {
-    const frontendPath = path.join(
+    const frontendPath = path.resolve(
         process.cwd(),
+        "..",
         "Frontend",
         "dist"
     );
