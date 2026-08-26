@@ -2,6 +2,7 @@ import {create} from "zustand"
 import { axiosInstance } from "../lib/axios.js"
 import toast from "react-hot-toast";
 import {io} from "socket.io-client"
+import { ensureKeyPair, generateRsaKeyPair, exportPublicKey, exportPrivateKey, savePrivateKey } from "../lib/crypto.js"
 
 const BASE_URL = import.meta.env.MODE === "development" ? "http://localhost:5001":"/api";
 
@@ -19,7 +20,8 @@ export const useAuthStore = create((set,get)=>({
         try {
             const res = await axiosInstance.get("/auth/check");
             set({authUser:res.data});
-            get.connectSocket();
+            await get().syncEncryptionKeys(res.data);
+            get().connectSocket();
         }catch(error) {
             set({authUser:null});
             console.log("Error in checkAuth"+error);
@@ -28,13 +30,43 @@ export const useAuthStore = create((set,get)=>({
         }
     },
 
+    // Makes sure THIS browser has a private key for the logged-in user.
+    // - If it already does (e.g. same browser as signup), nothing to do.
+    // - If not (new device, or cleared storage), generates a fresh keypair
+    //   and pushes the new public key to the server. Note: this means
+    //   messages encrypted under the user's old keypair can no longer be
+    //   decrypted on this device — a known tradeoff without a key-backup flow.
+    syncEncryptionKeys: async (user) => {
+        if (!user?._id) return;
+        try {
+            const { isNew, publicKeyBase64 } = await ensureKeyPair(user._id);
+            if (isNew) {
+                const res = await axiosInstance.put("/auth/update-public-key", {
+                    publicKey: publicKeyBase64,
+                });
+                set({ authUser: res.data });
+            }
+        } catch (error) {
+            console.log("Error syncing encryption keys: " + error);
+        }
+    },
+
     signup : async(data)=>{
         set({isSigningUp : true});
         try {
-            const res = await axiosInstance.post("/auth/signup",data);
+            // Generate the E2EE keypair BEFORE signing up so the public key
+            // can be included in the signup payload. The private key is only
+            // saved locally once we know the real user _id from the response.
+            const { publicKey, privateKey } = await generateRsaKeyPair();
+            const publicKeyBase64 = await exportPublicKey(publicKey);
+            const privateKeyBase64 = await exportPrivateKey(privateKey);
+
+            const res = await axiosInstance.post("/auth/signup",{...data, publicKey: publicKeyBase64});
+            savePrivateKey(res.data._id, privateKeyBase64);
+
             set({authUser : res.data});
             toast.success("Account Created Successfully");
-            get.connectSocket(); 
+            get().connectSocket();
         } catch (error) {
             toast.error(error.response.data.message);
         }
@@ -48,6 +80,7 @@ export const useAuthStore = create((set,get)=>({
         try {
             const res = await axiosInstance.post("/auth/login",data);
             set({authUser : res.data});
+            await get().syncEncryptionKeys(res.data);
             toast.success("Logged in Successfully");
             get().connectSocket();
         } catch (error) {

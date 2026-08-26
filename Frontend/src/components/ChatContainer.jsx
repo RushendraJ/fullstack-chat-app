@@ -5,6 +5,7 @@ import MessageInput from "./MessageInput";
 import MessageSkeleton from "./skeletons/MessageSkeleton.jsx";
 import { useAuthStore } from "../store/useAuthStore.js";
 import { formatMessageTime } from "../lib/utils";
+import { Check, CheckCheck } from "lucide-react";
 
 const ChatContainer = () => {
     const {messages,getMessages,isMessagesLoading,selectedUser,subscribeToMessages,unsubscribeToMessages} = useChatStore();
@@ -69,6 +70,17 @@ const ChatContainer = () => {
                             )}
                             {message.text && <p>{message.text}</p>}
                         </div>
+                        {message.senderID === authUser._id && (
+                            <div className="chat-footer opacity-50 text-xs flex items-center gap-1 mt-1">
+                                {message.readAt ? (
+                                    <CheckCheck className="size-3.5 text-info" />
+                                ) : message.deliveredAt ? (
+                                    <CheckCheck className="size-3.5" />
+                                ) : (
+                                    <Check className="size-3.5" />
+                                )}
+                            </div>
+                        )}
                     </div>
                 ))}
             </div>

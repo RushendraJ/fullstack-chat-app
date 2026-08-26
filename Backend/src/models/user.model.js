@@ -19,6 +19,12 @@ const userSchema = new mongoose.Schema(
         profilePic : {
             type : String,
             default : "",
+        },
+        publicKey : {
+            // Base64-encoded SPKI public key (RSA-OAEP), generated client-side.
+            // The matching private key NEVER leaves the user's browser.
+            type : String,
+            default : "",
         }
     },
     { timestamps: true}

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useChatStore } from "../store/useChatStore";
 import { Image, Send, X } from "lucide-react";
 import toast from "react-hot-toast";
@@ -7,7 +7,30 @@ const MessageInput = () => {
   const [text, setText] = useState("");
   const [imagePreview, setImagePreview] = useState(null);
   const fileInputRef = useRef(null);
-  const { sendMessage } = useChatStore();
+  const typingTimeoutRef = useRef(null);
+  const { sendMessage, sendTyping, sendStopTyping } = useChatStore();
+
+  // Clear any pending timeout, and tell the other person we stopped, if the
+  // component unmounts (e.g. user switches to a different chat) mid-type.
+  useEffect(() => {
+    return () => {
+      clearTimeout(typingTimeoutRef.current);
+      sendStopTyping();
+    };
+  }, [sendStopTyping]);
+
+  const handleTextChange = (e) => {
+    setText(e.target.value);
+
+    sendTyping();
+
+    // Debounce "stopped typing": only fire it once the person has paused
+    // for a bit, rather than on every keystroke.
+    clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => {
+      sendStopTyping();
+    }, 1500);
+  };
 
   const handleImageChange = (e) => {
     const file = e.target.files[0];
@@ -31,6 +54,9 @@ const MessageInput = () => {
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!text.trim() && !imagePreview) return;
+
+    clearTimeout(typingTimeoutRef.current);
+    sendStopTyping();
 
     try {
       await sendMessage({
@@ -76,7 +102,7 @@ const MessageInput = () => {
             className="w-full input input-bordered rounded-lg input-sm sm:input-md"
             placeholder="Type a message..."
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={handleTextChange}
           />
           <input
             type="file"
