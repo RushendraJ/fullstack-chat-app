@@ -25,6 +25,12 @@ const userSchema = new mongoose.Schema(
             // The matching private key NEVER leaves the user's browser.
             type : String,
             default : "",
+        },
+        encryptedPrivateKeyBackup : {
+            // JSON string: { v, salt, iv, ciphertext } — private key encrypted
+            // client-side with a key derived from the login password.
+            type : String,
+            default : "",
         }
     },
     { timestamps: true}

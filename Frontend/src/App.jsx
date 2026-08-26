@@ -12,9 +12,10 @@ import { useAuthStore } from './store/useAuthStore'
 import {Loader} from "lucide-react"
 import { Toaster } from 'react-hot-toast'
 import { useThemeStore } from './store/useThemeStore'
+import RestoreKeyModal from './components/RestoreKeyModal'
 
 const App = () => {
-  const {authUser,checkAuth,isCheckingAuth,onlineUsers} = useAuthStore();
+  const {authUser,checkAuth,isCheckingAuth,onlineUsers,needsKeyRestore} = useAuthStore();
   const {theme} = useThemeStore();
   console.log(onlineUsers);
   useEffect(()=>{
@@ -38,6 +39,7 @@ const App = () => {
         <Route path="/settings" element={<SettingsPage/>}/>
         <Route path="/profile" element={authUser?<ProfilePage/>:<Navigate to="/login"/> }/>
       </Routes>
+      {authUser && needsKeyRestore && <RestoreKeyModal />}
       <Toaster/>
     </div>
   )

@@ -97,6 +97,35 @@ export async function ensureKeyPair(userId) {
   return { isNew: true, publicKeyBase64: pubB64 };
 }
 
+const PBKDF2_ITERATIONS = 250000;
+
+async function deriveKeyFromPassword(password, saltBytes) {
+  const baseKey = await crypto.subtle.importKey(
+    "raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveKey"]
+  );
+  return crypto.subtle.deriveKey(
+    { name: "PBKDF2", salt: saltBytes, iterations: PBKDF2_ITERATIONS, hash: "SHA-256" },
+    baseKey, AES_ALGO, false, ["encrypt", "decrypt"]
+  );
+}
+
+export async function encryptPrivateKeyBackup(privateKeyBase64, password) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await deriveKeyFromPassword(password, salt);
+  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(privateKeyBase64));
+  return JSON.stringify({ v: 1, salt: bufToBase64(salt), iv: bufToBase64(iv), ciphertext: bufToBase64(ciphertext) });
+}
+
+export async function decryptPrivateKeyBackup(backupJson, password) {
+  const parsed = JSON.parse(backupJson);
+  const salt = new Uint8Array(base64ToBuf(parsed.salt));
+  const iv = base64ToBuf(parsed.iv);
+  const key = await deriveKeyFromPassword(password, salt);
+  const plaintextBuf = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, base64ToBuf(parsed.ciphertext));
+  return new TextDecoder().decode(plaintextBuf);
+}
+
 // ---------- message encryption / decryption ----------
 
 /**

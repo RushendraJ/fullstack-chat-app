@@ -4,7 +4,7 @@ import User from "../models/user.model.js";
 import bcrypt from "bcryptjs";
 
 export const signup = async (req,res)=> {
-    const {fullName,email,password,publicKey} = req.body;
+    const {fullName,email,password,publicKey,encryptedPrivateKeyBackup} = req.body;
     try {
         // hash password
         if(!fullName || !password || !email) {
@@ -21,7 +21,8 @@ export const signup = async (req,res)=> {
             fullName,
             email,
             password : hashedPassword,
-            publicKey : publicKey || ""
+            publicKey : publicKey || "",
+            encryptedPrivateKeyBackup : encryptedPrivateKeyBackup || ""
         });
         if(newUser) {
             // generate JWT token
@@ -33,7 +34,8 @@ export const signup = async (req,res)=> {
                 fullName : newUser.fullName,
                 email : newUser.email,
                 profilePic : newUser.profilePic,
-                publicKey : newUser.publicKey
+                publicKey : newUser.publicKey,
+                encryptedPrivateKeyBackup : newUser.encryptedPrivateKeyBackup
             });
         }
         else {
@@ -62,7 +64,8 @@ export const login = async (req,res)=> {
             fullName : user.fullName,
             email : user.email,
             profilePic : user.profilePic,
-            publicKey : user.publicKey
+            publicKey : user.publicKey,
+            encryptedPrivateKeyBackup : user.encryptedPrivateKeyBackup
         });
     } catch(error) {
         console.log("Error in Login Controller : "+error.message);
@@ -70,25 +73,48 @@ export const login = async (req,res)=> {
     }
 }
 
-// Called when a user logs in on a device that doesn't have their private key
-// (e.g. a new browser). We generate a fresh keypair client-side and register
-// the new public key here. Note: messages encrypted under the OLD key pair
-// become undecryptable on this device — this is a known, expected tradeoff
-// of client-side E2EE without a key-backup system.
+// Called when a device needs to register a (possibly new) public key —
+// e.g. a brand-new keypair generated because no server-side backup existed
+// yet for this account. Optionally also (re)uploads the password-encrypted
+// private key backup at the same time, so future devices can restore from
+// it instead of generating yet another throwaway keypair.
 export const updatePublicKey = async (req,res)=> {
     try {
-        const {publicKey} = req.body;
+        const {publicKey, encryptedPrivateKeyBackup} = req.body;
         if(!publicKey) {
             return res.status(400).json({message:"publicKey is required"});
         }
+        const update = {publicKey};
+        // Only overwrite the backup when the caller actually sends a fresh
+        // one. Omitting it leaves any existing backup untouched.
+        if(encryptedPrivateKeyBackup) {
+            update.encryptedPrivateKeyBackup = encryptedPrivateKeyBackup;
+        }
         const updatedUser = await User.findByIdAndUpdate(
             req.user._id,
-            {publicKey},
+            update,
             {new:true}
         ).select("-password");
         res.status(200).json(updatedUser);
     } catch(error) {
         console.log("Error in updatePublicKey controller : "+error.message);
+        res.status(500).json({message:"Internal Sever Error"});
+    }
+}
+
+// Lets an already-authenticated session (e.g. restored via cookie, where we
+// no longer have the plaintext password in memory) fetch the encrypted
+// backup blob so the client can prompt for the password and decrypt it
+// locally to recover the private key on this device.
+export const getBackupKey = async (req,res)=> {
+    try {
+        const user = await User.findById(req.user._id).select("encryptedPrivateKeyBackup");
+        if(!user) {
+            return res.status(404).json({message:"User Not Found"});
+        }
+        res.status(200).json({encryptedPrivateKeyBackup: user.encryptedPrivateKeyBackup || ""});
+    } catch(error) {
+        console.log("Error in getBackupKey controller : "+error.message);
         res.status(500).json({message:"Internal Sever Error"});
     }
 }
